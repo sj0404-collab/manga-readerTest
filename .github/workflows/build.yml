@@ -1,4 +1,4 @@
-name: Build APK (V7 Clean)
+name: Build APK (V8 Modern Strike)
 on:
   push:
     branches: [ main, master ]
@@ -28,45 +28,51 @@ jobs:
       - name: Install JS Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Patch Gradle Files
+      - name: Patch Gradle Files (Modern Syntax)
         run: |
-          # 1. settings.gradle.kts
+          # 1. settings.gradle.kts - максимально стандартный
           cat > settings.gradle.kts << 'EOF'
           pluginManagement {
-              repositories { google(); mavenCentral(); gradlePluginPortal() }
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-              repositories { google(); mavenCentral() }
+              repositories {
+                  google()
+                  mavenCentral()
+              }
           }
           rootProject.name = "manga-reader"
           include(":app")
           EOF
 
-          # 2. build.gradle.kts (Упрощенный до предела)
+          # 2. build.gradle.kts - используем современный блок plugins
           cat > build.gradle.kts << 'EOF'
-          buildscript {
-              repositories { google(); mavenCentral() }
-              dependencies {
-                  classpath("com.android.tools.build:gradle:8.1.0")
-                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.10")
-                  classpath("com.google.dagger:hilt-android-gradle-plugin:2.44")
-              }
+          plugins {
+              id("com.android.application") version "8.2.0" apply false
+              id("com.android.library") version "8.2.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.20" apply false
+              id("com.google.dagger.hilt.android") version "2.48" apply false
           }
           EOF
 
-          # 3. gradle.properties (БЕЗ ГЛЮЧНЫХ ПАРАМЕТРОВ)
+          # 3. gradle.properties
           cat > gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          org.gradle.jvmargs=-Xmx2048m
           android.useAndroidX=true
           android.nonTransitiveRClass=true
+          # Отключаем глючную статистику Котлина
+          kotlin.incremental=false
           EOF
-          echo "Конфиги очищены от лишнего!"
+          echo "Конфиги обновлены до Bolt-стандартов!"
 
-      - name: Create Gradle Wrapper (8.1)
+      - name: Create Gradle Wrapper (8.2.1)
         run: |
-          # Откатываемся на 8.1 для максимальной совместимости
-          gradle wrapper --gradle-version 8.1
+          gradle wrapper --gradle-version 8.2.1
           chmod +x gradlew
 
       - name: Build Debug APK
