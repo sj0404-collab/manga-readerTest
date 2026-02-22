@@ -1,4 +1,4 @@
-name: Build APK (Live Files)
+name: Build APK (Peace Fix)
 on:
   push:
     branches: [ main, master ]
@@ -11,7 +11,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 1. Готовим окружение
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -22,20 +21,37 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          # Без кеша, чтоб не падал, если файлы меняются
           
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 2. Ставим JS библиотеки (они нужны для сборки нативки в Expo-проектах)
       - name: Install JS Dependencies
         run: npm install --legacy-peer-deps
 
-      # 3. УЛЬТИМАТИВНЫЙ ПАТЧ (чтобы не было Unresolved reference)
-      # Мы просто жестко переписываем билд-файл на стандартный, 
-      # который поймет любой Градл без внешних каталогов.
-      - name: Patch Root build.gradle.kts
+      # ВОТ ТУТ МЫ РАЗРУЛИВАЕМ КОНФЛИКТ
+      - name: Patch Gradle Configurations
         run: |
+          # 1. Сначала правим settings.gradle.kts — разрешаем проектные репозитории
+          cat > settings.gradle.kts << 'ENDOFFILE'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "manga-reader"
+          include(":app")
+          ENDOFFILE
+
+          # 2. Теперь правим корневой build.gradle.kts — делаем его чистым
           cat > build.gradle.kts << 'ENDOFFILE'
           buildscript {
               repositories {
@@ -54,22 +70,18 @@ jobs:
               }
           }
           ENDOFFILE
-          echo "Билд-файл подправлен!"
+          echo "Конфликт настроек устранен, бро!"
 
-      # 4. Проверяем Wrapper (если его нет — создаем)
-      - name: Check Gradle Wrapper
+      - name: Check/Create Gradle Wrapper
         run: |
           if [ ! -f "gradlew" ]; then
             gradle wrapper --gradle-version 8.4
           fi
           chmod +x gradlew
 
-      # 5. СБОРКА ТВОЕГО APK
       - name: Build Debug APK
-        # Собираем дебаг версию модуля :app
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      # 6. Загружаем то, что получилось
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
