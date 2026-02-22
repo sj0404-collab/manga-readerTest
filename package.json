@@ -1,0 +1,27 @@
+{
+  "name": "manga-talk-reader",
+  "version": "1.0.0",
+  "description": "Advanced manga reader with OCR and TTS integration",
+  "private": true,
+  "scripts": {
+    "build:debug": "cd app && ./gradlew assembleDebug",
+    "build:release": "cd app && ./gradlew assembleRelease",
+    "test": "cd app && ./gradlew test",
+    "lint": "cd app && ./gradlew lint",
+    "clean": "cd app && ./gradlew clean"
+  },
+  "keywords": [
+    "manga",
+    "reader",
+    "ocr",
+    "tts",
+    "android",
+    "kotlin"
+  ],
+  "author": "Manga Talk Reader Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mangatalkreader/manga-talk-reader"
+  }
+}
