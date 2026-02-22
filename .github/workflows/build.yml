@@ -1,4 +1,4 @@
-name: Build APK (Full Reconstruction)
+name: Build APK (React Native Edition)
 on:
   push:
     branches: [ main, master ]
@@ -11,6 +11,27 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 1. Распаковка (как и раньше)
+      - name: Extract ZIP
+        run: |
+          ZIP_FILE=$(ls *.zip | head -n 1)
+          unzip -o "$ZIP_FILE" -d temp_extract
+          # Переносим всё из temp_extract/project в корень
+          cp -rf temp_extract/project/* . || cp -rf temp_extract/* .
+          rm -rf temp_extract
+
+      # 2. Установка Node.js (без этого React Native не соберется)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # 3. Установка зависимостей (тот самый npm install)
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+
+      # 4. Настройка Java и Android SDK
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -20,52 +41,36 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Reconstruct Project From ZIP
+      # 5. Генерация нативных файлов (если папки android нет, Expo её создаст)
+      - name: Expo Prebuild (if needed)
         run: |
-          # 1. Находим зипку (любую)
-          ZIP_FILE=$(ls *.zip | head -n 1)
-          if [ -z "$ZIP_FILE" ]; then 
-            echo "Бро, архив не найден! Убедись, что закинул ZIP в корень."
-            exit 1
+          if [ ! -d "android" ]; then
+            npx expo prebuild --platform android
           fi
 
-          echo "Нашел архив: $ZIP_FILE. Начинаю пересборку..."
-
-          # 2. Распаковываем во временную папку
-          unzip -o "$ZIP_FILE" -d temp_extract
-          
-          # 3. Вычищаем корень от старых папок, если они есть (app, и т.д.), 
-          # чтобы не было конфликтов версий.
-          rm -rf app
-          
-          # 4. Переносим всё из папки project (внутри архива) в корень
-          if [ -d "temp_extract/project" ]; then
-            cp -rf temp_extract/project/* .
-          else
-            cp -rf temp_extract/* .
-          fi
-          
-          # Удаляем мусор
-          rm -rf temp_extract
-          echo "Проект восстановлен."
-
-      - name: Final Fixes
+      # 6. Фикс мелких косяков версий
+      - name: Grant Execute Permission
         run: |
-          # Даем права на выполнение градл-врапперу, если он распаковался
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-          else
-            # Если враппера нет, создаем его
-            gradle wrapper --gradle-version 8.4
+          if [ -f "android/gradlew" ]; then
+            chmod +x android/gradlew
+          elif [ -f "gradlew" ]; then
             chmod +x gradlew
           fi
 
-      - name: Build Debug APK
-        # Собираем. Параметр --stacktrace покажет полную ошибку, если что-то упадет
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+      # 7. СБОРКА APK
+      - name: Build Android APK
+        run: |
+          if [ -d "android" ]; then
+            cd android && ./gradlew assembleDebug --no-daemon
+          else
+            ./gradlew assembleDebug --no-daemon
+          fi
 
-      - name: Upload Result
+      # 8. Выгрузка готового файла
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: manga-reader-working
-          path: app/build/outputs/apk/debug/*.apk
+          name: manga-reader-apk
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/debug/*.apk
