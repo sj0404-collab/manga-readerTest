@@ -1,4 +1,4 @@
-name: Build APK (V8 Modern Strike)
+name: Build APK (V9 Ultimate Fix)
 on:
   push:
     branches: [ main, master ]
@@ -28,35 +28,35 @@ jobs:
       - name: Install JS Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Patch Gradle Files (Modern Syntax)
+      # ЖЕСТКИЙ ПАТЧ: Прописываем только те версии, которые дружат с Gradle 8
+      - name: Patch Gradle Files
         run: |
-          # 1. settings.gradle.kts - максимально стандартный
+          # 1. settings.gradle.kts
           cat > settings.gradle.kts << 'EOF'
           pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = "manga-reader"
           include(":app")
           EOF
 
-          # 2. build.gradle.kts - используем современный блок plugins
+          # 2. build.gradle.kts
+          # Используем связку AGP 8.1.0 и Kotlin 1.8.20 - это лечит HasConvention
           cat > build.gradle.kts << 'EOF'
-          plugins {
-              id("com.android.application") version "8.2.0" apply false
-              id("com.android.library") version "8.2.0" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.20" apply false
-              id("com.google.dagger.hilt.android") version "2.48" apply false
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies {
+                  classpath("com.android.tools.build:gradle:8.1.0")
+                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20")
+                  classpath("com.google.dagger:hilt-android-gradle-plugin:2.48")
+              }
+          }
+          allprojects {
+              repositories { google(); mavenCentral() }
           }
           EOF
 
@@ -65,18 +65,12 @@ jobs:
           org.gradle.jvmargs=-Xmx2048m
           android.useAndroidX=true
           android.nonTransitiveRClass=true
-          # Отключаем глючную статистику Котлина
-          kotlin.incremental=false
           EOF
-          echo "Конфиги обновлены до Bolt-стандартов!"
 
-      - name: Create Gradle Wrapper (8.2.1)
-        run: |
-          gradle wrapper --gradle-version 8.2.1
-          chmod +x gradlew
-
-      - name: Build Debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Build with System Gradle
+        # Мы НЕ создаем враппер. Мы юзаем предустановленный в системе gradle напрямую.
+        # Это исключит ошибку на этапе 'Create Gradle Wrapper'
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
