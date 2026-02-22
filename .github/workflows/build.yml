@@ -1,4 +1,4 @@
-name: Build APK (Hilt Fix)
+name: Build APK (Stability Fix)
 on:
   push:
     branches: [ main, master ]
@@ -28,60 +28,52 @@ jobs:
       - name: Install JS Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Patch Gradle Files (Hilt Support)
+      - name: Patch Gradle Files (Force Stability)
         run: |
-          # 1. Исправляем settings.gradle.kts
-          cat > settings.gradle.kts << 'ENDOFFILE'
+          # 1. settings.gradle.kts
+          cat > settings.gradle.kts << 'EOF'
           pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = "manga-reader"
           include(":app")
-          ENDOFFILE
+          EOF
 
-          # 2. Исправляем корневой build.gradle.kts — добавляем Hilt и Kotlin
-          cat > build.gradle.kts << 'ENDOFFILE'
+          # 2. build.gradle.kts
+          cat > build.gradle.kts << 'EOF'
           buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
               dependencies {
                   classpath("com.android.tools.build:gradle:8.2.0")
                   classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20")
                   classpath("com.google.dagger:hilt-android-gradle-plugin:2.48")
               }
           }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          ENDOFFILE
-          echo "Hilt пропатчен, летим дальше!"
+          EOF
 
-      - name: Check/Create Gradle Wrapper
+          # 3. gradle.properties (ОТКЛЮЧАЕМ ГЛЮЧНУЮ СЛУЖБУ)
+          cat > gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          android.useAndroidX=true
+          android.nonTransitiveRClass=true
+          # Фикс для той самой ошибки с buildFlowService
+          kotlin.build.report.output=none
+          EOF
+          echo "Конфиги стабилизированы!"
+
+      - name: Create Gradle Wrapper (8.2.1)
         run: |
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 8.4
-          fi
+          # Используем версию 8.2.1 вместо 8.4
+          gradle wrapper --gradle-version 8.2.1
           chmod +x gradlew
 
       - name: Build Debug APK
-        # Собираем с флагом --stacktrace, чтобы если что, видеть все кишки ошибки
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        # Собираем. Добавил --no-build-cache на всякий случай
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace --no-build-cache
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
