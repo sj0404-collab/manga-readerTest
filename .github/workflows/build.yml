@@ -1,4 +1,4 @@
-name: Build APK Ultimate (The Last Stand)
+name: Build APK Ultimate (Windows Groovy Edition)
 on:
   push:
     branches: [ main, master ]
@@ -6,20 +6,14 @@ on:
 
 jobs:
   build:
-    # Оставляем Ubuntu, но если хочешь Windows, просто замени на windows-latest
-    runs-on: ubuntu-latest
-    
+    # Переходим на Windows, как ты и просил
+    runs-on: windows-latest
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # Устанавливаем всё, что может понадобиться (и старое, и новое)
-      - name: Setup Node.js (React/JS support)
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Setup JDK 17 (Standard for Android)
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -28,17 +22,24 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
       - name: Install JS Deps
-        run: npm install --legacy-peer-deps || echo "No package.json found, skipping npm"
+        shell: bash
+        run: npm install --legacy-peer-deps || echo "No package.json"
 
-      # ГЛАВНЫЙ ХИРУРГИЧЕСКИЙ ШАГ
-      - name: Wipe and Rebuild Configs
+      # ГЛАВНЫЙ ШАГ: Сносим всё и пишем на Groovy (без .kts)
+      - name: Patch Project to Groovy Style
+        shell: bash
         run: |
-          # Сносим старые конфиги, которые могут конфликтовать
+          # Удаляем все старые конфиги
           rm -f settings.gradle.kts settings.gradle build.gradle build.gradle.kts gradle.properties
-
-          # 1. НОВЫЙ settings.gradle.kts (Чистый и понятный)
-          cat > settings.gradle.kts << 'EOF'
+          
+          # 1. Сеттингс на Groovy
+          cat > settings.gradle << 'EOF'
           pluginManagement {
               repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
@@ -47,17 +48,17 @@ jobs:
               repositories { google(); mavenCentral() }
           }
           rootProject.name = "manga-reader"
-          include(":app")
+          include ':app'
           EOF
 
-          # 2. НОВЫЙ build.gradle.kts (Используем СТАБИЛЬНЫЕ версии для обхода HasConvention)
-          cat > build.gradle.kts << 'EOF'
+          # 2. Корневой билд на Groovy (самый стабильный вариант)
+          cat > build.gradle << 'EOF'
           buildscript {
               repositories { google(); mavenCentral() }
               dependencies {
-                  classpath("com.android.tools.build:gradle:8.1.0")
-                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.10")
-                  classpath("com.google.dagger:hilt-android-gradle-plugin:2.44")
+                  classpath 'com.android.tools.build:gradle:8.1.0'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
+                  classpath 'com.google.dagger:hilt-android-gradle-plugin:2.48'
               }
           }
           allprojects {
@@ -65,28 +66,26 @@ jobs:
           }
           EOF
 
-          # 3. Ультимативный gradle.properties (Фикс всех известных багов)
+          # 3. Пропертис
           cat > gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          org.gradle.jvmargs=-Xmx2048m
           android.useAndroidX=true
           android.nonTransitiveRClass=true
-          # Фикс для ошибки HasConvention и buildFlowService
-          kotlin.build.report.output=none
-          org.gradle.configuration-cache=false
+          kotlin.code.style=official
           EOF
 
-      - name: Force Create Gradle Wrapper (Stable 8.0)
-        run: |
-          gradle wrapper --gradle-version 8.0
-          chmod +x gradlew
+      # Используем официальный экшен для запуска билда (он сам пофиксит Градл)
+      - name: Setup Gradle and Build
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.0 # Стабильная версия для этого набора
 
-      - name: Build APK (The Destroyer)
-        # Если команда упадет, она не остановит workflow сразу, чтобы мы видели логи
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+      - name: Run Assemble
+        shell: bash
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: manga-reader-build
+          name: manga-reader-windows-build
           path: app/build/outputs/apk/debug/*.apk
