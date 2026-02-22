@@ -1,4 +1,4 @@
-name: Build APK (Smart Unzip Version)
+name: Build APK (Fix Order)
 on:
   push:
     branches: [ main, master ]
@@ -8,62 +8,61 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. Сначала просто забираем файлы из Repo (там только ZIP и workflow)
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      # ШАГ 1: Распаковываем любую зипку, которую найдем
+      # 2. ТЕПЕРЬ СРАЗУ РАСПАКОВЫВАЕМ
       - name: Find and Extract ZIP
         run: |
           ZIP_FILE=$(ls *.zip | head -n 1)
           if [ -z "$ZIP_FILE" ]; then
-            echo "Где зипка, Лебовски? Я её не вижу!"
+            echo "Архив не найден! Закинь ZIP в репозиторий."
             exit 1
           fi
-          echo "Нашел архив: $ZIP_FILE. Потрошим..."
+          echo "Распаковка $ZIP_FILE..."
           unzip -o "$ZIP_FILE" -d extracted
-          
-          # Проверяем, есть ли там внутри папка project (как обычно делает Bolt)
           if [ -d "extracted/project" ]; then
             cp -rf extracted/project/* .
           else
             cp -rf extracted/* .
           fi
           rm -rf extracted
-          echo "Распаковка готова, файлы раскиданы."
 
-      # ШАГ 2: Чиним корень (Bolt часто не дает нужный билд-файл)
+      # 3. Теперь, когда файлы на месте, ставим Java (БЕЗ кеша, чтоб не ругался)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          # Кеш пока выключил, чтобы билд железно прошел
+
+      # 4. Ставим SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 5. Подправляем структуру, если Bolt накосячил
       - name: Fix Project Structure
         run: |
-          # Создаем root build.gradle.kts, если его нет или он кривой
-          cat > build.gradle.kts << 'ENDOFFILE'
-          plugins {
-              id("com.android.application") version "8.2.0" apply false
-              id("org.jetbrains.kotlin.android") version "1.9.20" apply false
-              id("com.google.dagger.hilt.android") version "2.48" apply false
-          }
+          if [ ! -f "build.gradle.kts" ] && [ ! -f "build.gradle" ]; then
+            cat > build.gradle.kts << 'ENDOFFILE'
+            plugins {
+                id("com.android.application") version "8.2.0" apply false
+                id("org.jetbrains.kotlin.android") version "1.9.20" apply false
+            }
           ENDOFFILE
-
-          # Генерим Gradle Wrapper, если его нет
+          fi
+          
           if [ ! -f "gradlew" ]; then
             gradle wrapper --gradle-version 8.4
           fi
           chmod +x gradlew
 
-      # ШАГ 3: Сама сборка
+      # 6. Погнали собирать!
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # ШАГ 4: Забираем готовый ништяк
+      # 7. Выгружаем результат
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
