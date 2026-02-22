@@ -1,4 +1,4 @@
-name: Build APK (React Native Edition)
+name: Build Manga Reader APK
 on:
   push:
     branches: [ main, master ]
@@ -11,27 +11,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 1. Распаковка (как и раньше)
-      - name: Extract ZIP
-        run: |
-          ZIP_FILE=$(ls *.zip | head -n 1)
-          unzip -o "$ZIP_FILE" -d temp_extract
-          # Переносим всё из temp_extract/project в корень
-          cp -rf temp_extract/project/* . || cp -rf temp_extract/* .
-          rm -rf temp_extract
-
-      # 2. Установка Node.js (без этого React Native не соберется)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      # 3. Установка зависимостей (тот самый npm install)
-      - name: Install Dependencies
-        run: |
-          npm install --legacy-peer-deps
-
-      # 4. Настройка Java и Android SDK
       - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
@@ -41,36 +25,44 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 5. Генерация нативных файлов (если папки android нет, Expo её создаст)
-      - name: Expo Prebuild (if needed)
+      - name: Reconstruct Project
         run: |
-          if [ ! -d "android" ]; then
-            npx expo prebuild --platform android
-          fi
+          # 1. Находим и распаковываем зипку
+          ZIP_FILE=$(ls *.zip | head -n 1)
+          unzip -o "$ZIP_FILE" -d temp_extract
+          
+          # 2. Чистим корень, чтобы не было конфликтов
+          rm -rf app build.gradle.kts settings.gradle.kts .expo .bolt
+          
+          # 3. Переносим всё из папки project (внутри зипа) в корень
+          cp -rf temp_extract/project/* . || cp -rf temp_extract/* .
+          rm -rf temp_extract
 
-      # 6. Фикс мелких косяков версий
-      - name: Grant Execute Permission
+      - name: Install JS Dependencies
         run: |
-          if [ -f "android/gradlew" ]; then
-            chmod +x android/gradlew
-          elif [ -f "gradlew" ]; then
-            chmod +x gradlew
-          fi
+          # Устанавливаем всё, что нужно для React Native
+          npm install
+          # Принудительно ставим сам Expo и его инструменты для сборки
+          npm install -g expo-cli
+          npm install @expo/prebuild-config
 
-      # 7. СБОРКА APK
+      - name: Expo Prebuild (The Magic Step)
+        run: |
+          # Эта команда превращает JS проект в настоящий Android проект
+          # Она создаст правильную папку /android со всеми нужными файлами
+          npx expo prebuild --platform android --no-install
+
+      - name: Fix Permissions
+        run: chmod +x android/gradlew
+
       - name: Build Android APK
         run: |
-          if [ -d "android" ]; then
-            cd android && ./gradlew assembleDebug --no-daemon
-          else
-            ./gradlew assembleDebug --no-daemon
-          fi
+          cd android
+          # Собираем дебаг-версию
+          ./gradlew assembleDebug --no-daemon
 
-      # 8. Выгрузка готового файла
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: manga-reader-apk
-          path: |
-            android/app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/debug/*.apk
+          name: manga-reader-release
+          path: android/app/build/outputs/apk/debug/*.apk
