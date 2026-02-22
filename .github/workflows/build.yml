@@ -1,4 +1,4 @@
-name: Build APK (Peace Fix)
+name: Build APK (Hilt Fix)
 on:
   push:
     branches: [ main, master ]
@@ -28,10 +28,9 @@ jobs:
       - name: Install JS Dependencies
         run: npm install --legacy-peer-deps
 
-      # ВОТ ТУТ МЫ РАЗРУЛИВАЕМ КОНФЛИКТ
-      - name: Patch Gradle Configurations
+      - name: Patch Gradle Files (Hilt Support)
         run: |
-          # 1. Сначала правим settings.gradle.kts — разрешаем проектные репозитории
+          # 1. Исправляем settings.gradle.kts
           cat > settings.gradle.kts << 'ENDOFFILE'
           pluginManagement {
               repositories {
@@ -51,7 +50,7 @@ jobs:
           include(":app")
           ENDOFFILE
 
-          # 2. Теперь правим корневой build.gradle.kts — делаем его чистым
+          # 2. Исправляем корневой build.gradle.kts — добавляем Hilt и Kotlin
           cat > build.gradle.kts << 'ENDOFFILE'
           buildscript {
               repositories {
@@ -61,6 +60,7 @@ jobs:
               dependencies {
                   classpath("com.android.tools.build:gradle:8.2.0")
                   classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20")
+                  classpath("com.google.dagger:hilt-android-gradle-plugin:2.48")
               }
           }
           allprojects {
@@ -70,7 +70,7 @@ jobs:
               }
           }
           ENDOFFILE
-          echo "Конфликт настроек устранен, бро!"
+          echo "Hilt пропатчен, летим дальше!"
 
       - name: Check/Create Gradle Wrapper
         run: |
@@ -80,6 +80,7 @@ jobs:
           chmod +x gradlew
 
       - name: Build Debug APK
+        # Собираем с флагом --stacktrace, чтобы если что, видеть все кишки ошибки
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
