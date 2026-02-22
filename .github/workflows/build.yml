@@ -1,4 +1,4 @@
-name: Build Manga Reader APK
+name: Build APK (Live Files)
 on:
   push:
     branches: [ main, master ]
@@ -8,10 +8,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      # 1. Готовим окружение
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -21,48 +22,56 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-
+          # Без кеша, чтоб не падал, если файлы меняются
+          
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Reconstruct Project
-        run: |
-          # 1. Находим и распаковываем зипку
-          ZIP_FILE=$(ls *.zip | head -n 1)
-          unzip -o "$ZIP_FILE" -d temp_extract
-          
-          # 2. Чистим корень, чтобы не было конфликтов
-          rm -rf app build.gradle.kts settings.gradle.kts .expo .bolt
-          
-          # 3. Переносим всё из папки project (внутри зипа) в корень
-          cp -rf temp_extract/project/* . || cp -rf temp_extract/* .
-          rm -rf temp_extract
-
+      # 2. Ставим JS библиотеки (они нужны для сборки нативки в Expo-проектах)
       - name: Install JS Dependencies
+        run: npm install --legacy-peer-deps
+
+      # 3. УЛЬТИМАТИВНЫЙ ПАТЧ (чтобы не было Unresolved reference)
+      # Мы просто жестко переписываем билд-файл на стандартный, 
+      # который поймет любой Градл без внешних каталогов.
+      - name: Patch Root build.gradle.kts
         run: |
-          # Устанавливаем всё, что нужно для React Native
-          npm install
-          # Принудительно ставим сам Expo и его инструменты для сборки
-          npm install -g expo-cli
-          npm install @expo/prebuild-config
+          cat > build.gradle.kts << 'ENDOFFILE'
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath("com.android.tools.build:gradle:8.2.0")
+                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20")
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          ENDOFFILE
+          echo "Билд-файл подправлен!"
 
-      - name: Expo Prebuild (The Magic Step)
+      # 4. Проверяем Wrapper (если его нет — создаем)
+      - name: Check Gradle Wrapper
         run: |
-          # Эта команда превращает JS проект в настоящий Android проект
-          # Она создаст правильную папку /android со всеми нужными файлами
-          npx expo prebuild --platform android --no-install
+          if [ ! -f "gradlew" ]; then
+            gradle wrapper --gradle-version 8.4
+          fi
+          chmod +x gradlew
 
-      - name: Fix Permissions
-        run: chmod +x android/gradlew
+      # 5. СБОРКА ТВОЕГО APK
+      - name: Build Debug APK
+        # Собираем дебаг версию модуля :app
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Build Android APK
-        run: |
-          cd android
-          # Собираем дебаг-версию
-          ./gradlew assembleDebug --no-daemon
-
+      # 6. Загружаем то, что получилось
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: manga-reader-release
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: manga-reader-build
+          path: app/build/outputs/apk/debug/*.apk
