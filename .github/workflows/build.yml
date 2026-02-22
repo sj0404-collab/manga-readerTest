@@ -17,24 +17,43 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
 
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2.0'
+
       - name: Extract project
         run: |
-          unzip project-bolt-sb1-9fquoce7.zip -d extracted
-          cp -r extracted/project/* .
+          unzip project-bolt-sb1-9fquoce7.zip -d extracted || true
+          cp -r extracted/project/* . || true
 
-      - name: Create gradle wrapper
+      - name: Setup gradle wrapper
         run: |
           mkdir -p gradle/wrapper
-          curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2.0/gradlew -o gradlew
+          wget -q https://services.gradle.org/distributions/gradle-8.2.0-bin.zip -O /tmp/gradle.zip || curl -L https://services.gradle.org/distributions/gradle-8.2.0-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp/gradle-dist
+          GRADLE_BIN=/tmp/gradle-dist/gradle-8.2.0/bin/gradle
+          chmod +x $GRADLE_BIN
+          $GRADLE_BIN wrapper --gradle-version=8.2.0
           chmod +x gradlew
-          cat > gradle/wrapper/gradle-wrapper.properties << PROPS
-          distributionBase=GRADLE_USER_HOME
-          distributionPath=wrapper/dists
-          distributionUrl=https\://services.gradle.org/distributions/gradle-8.2.0-bin.zip
-          zipStoreBase=GRADLE_USER_HOME
-          zipStorePath=wrapper/dists
-          PROPS
 
+      - name: Check project structure
+        run: |
+          echo "=== Root files ==="
+          ls -la
+          echo "=== App dir ==="
+          ls -la app/ || echo "No app dir!"
+          echo "=== Gradle files ==="
+          ls -la gradle/wrapper/ || echo "No wrapper!"
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: manga-reader-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
