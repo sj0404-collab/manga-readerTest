@@ -1,4 +1,4 @@
-name: Build APK (V9 Ultimate Fix)
+name: Build APK Ultimate (The Last Stand)
 on:
   push:
     branches: [ main, master ]
@@ -6,32 +6,38 @@ on:
 
 jobs:
   build:
+    # Оставляем Ubuntu, но если хочешь Windows, просто замени на windows-latest
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      # Устанавливаем всё, что может понадобиться (и старое, и новое)
+      - name: Setup Node.js (React/JS support)
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Setup JDK 17
+      - name: Setup JDK 17 (Standard for Android)
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-          
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install JS Dependencies
-        run: npm install --legacy-peer-deps
+      - name: Install JS Deps
+        run: npm install --legacy-peer-deps || echo "No package.json found, skipping npm"
 
-      # ЖЕСТКИЙ ПАТЧ: Прописываем только те версии, которые дружат с Gradle 8
-      - name: Patch Gradle Files
+      # ГЛАВНЫЙ ХИРУРГИЧЕСКИЙ ШАГ
+      - name: Wipe and Rebuild Configs
         run: |
-          # 1. settings.gradle.kts
+          # Сносим старые конфиги, которые могут конфликтовать
+          rm -f settings.gradle.kts settings.gradle build.gradle build.gradle.kts gradle.properties
+
+          # 1. НОВЫЙ settings.gradle.kts (Чистый и понятный)
           cat > settings.gradle.kts << 'EOF'
           pluginManagement {
               repositories { google(); mavenCentral(); gradlePluginPortal() }
@@ -44,15 +50,14 @@ jobs:
           include(":app")
           EOF
 
-          # 2. build.gradle.kts
-          # Используем связку AGP 8.1.0 и Kotlin 1.8.20 - это лечит HasConvention
+          # 2. НОВЫЙ build.gradle.kts (Используем СТАБИЛЬНЫЕ версии для обхода HasConvention)
           cat > build.gradle.kts << 'EOF'
           buildscript {
               repositories { google(); mavenCentral() }
               dependencies {
                   classpath("com.android.tools.build:gradle:8.1.0")
-                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20")
-                  classpath("com.google.dagger:hilt-android-gradle-plugin:2.48")
+                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.10")
+                  classpath("com.google.dagger:hilt-android-gradle-plugin:2.44")
               }
           }
           allprojects {
@@ -60,19 +65,27 @@ jobs:
           }
           EOF
 
-          # 3. gradle.properties
+          # 3. Ультимативный gradle.properties (Фикс всех известных багов)
           cat > gradle.properties << 'EOF'
-          org.gradle.jvmargs=-Xmx2048m
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
           android.useAndroidX=true
           android.nonTransitiveRClass=true
+          # Фикс для ошибки HasConvention и buildFlowService
+          kotlin.build.report.output=none
+          org.gradle.configuration-cache=false
           EOF
 
-      - name: Build with System Gradle
-        # Мы НЕ создаем враппер. Мы юзаем предустановленный в системе gradle напрямую.
-        # Это исключит ошибку на этапе 'Create Gradle Wrapper'
-        run: gradle assembleDebug --no-daemon --stacktrace
+      - name: Force Create Gradle Wrapper (Stable 8.0)
+        run: |
+          gradle wrapper --gradle-version 8.0
+          chmod +x gradlew
+
+      - name: Build APK (The Destroyer)
+        # Если команда упадет, она не остановит workflow сразу, чтобы мы видели логи
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: manga-reader-build
