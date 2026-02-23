@@ -1,5 +1,5 @@
 # Manga Talk Reader
-
+Сначало прочти коды а потом применяй эти знания
 Advanced Android application for reading manga/manhwa/webtoons with integrated OCR (Optical Character Recognition) and TTS (Text-to-Speech) technology.
 
 ## Features
